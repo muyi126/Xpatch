@@ -142,7 +142,7 @@ It's so easy !!!
  - ...
  - **你自己编写的Xposed模块**
  
-**Note：一般来说，只要app可以被Xpatch破解，并且运行时没有做签名校验，与其相关的Xposed模块都是可用的。**
+**Note：一般来说，只要app可以被Xpatch破解，与其相关的Xposed模块都是可用的。**
 
 ## 可破解的App示例
  - 微信
@@ -167,6 +167,11 @@ It's so easy !!!
 Xpatch源码解析博文已发布到个人技术公众号**Android葵花宝典**上。  
 扫一扫即可查看：  
 ![](https://upload-images.jianshu.io/upload_images/1639238-ab6e0fceabfffdda.jpg?imageMogr2/auto-orient/strip%7CimageView2/2/w/180)
+
+## 其他
+assets目录下的classes.dex是来加载设备上已安装的Xposed插件，其源代码也已经开源：  
+[xposed_module_loader](https://github.com/WindySha/xposed_module_loader)  
+欢迎star or fork.
 
 ## Issues
 Xpatch是基于apk二次打包实现的，而且使用到了dex2Jar工具，因此，也存在不少的局限性。大概有以下几点：
