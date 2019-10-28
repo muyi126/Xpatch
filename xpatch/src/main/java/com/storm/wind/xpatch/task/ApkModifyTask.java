@@ -36,7 +36,7 @@ public class ApkModifyTask implements Runnable {
 
         String jarOutputPath = unzipApkFile.getParent() + File.separator + JAR_FILE_NAME;
 
-        // classes.dex
+        // 找到包含application的classes.dex
         String targetDexFileName = dumpJarFile(dexFileCount, unzipApkFilePath, jarOutputPath, applicationName);
 
         if (showAllLogs) {

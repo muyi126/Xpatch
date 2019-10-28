@@ -73,12 +73,12 @@ public class BuildAndSignApkTask implements Runnable {
                 signCmd.append(" -keystore ")
                         .append(keyStorePath)
                         .append(" -storepass ")
-                        .append("123456")
+                        .append("skyguard")
                         .append(" -signedjar ")
                         .append(" " + signedApkPath + " ")
                         .append(" " + apkPath + " ")
                         .append(" -digestalg SHA1 -sigalg SHA1withRSA ")
-                        .append(" key0 ");
+                        .append(" skyguard ");
 //                System.out.println("\n" + signCmd + "\n");
                 String result = ShellCmdUtil.execCmd(signCmd.toString(), null);
                 System.out.println(" sign apk time is :" + ((System.currentTimeMillis() - time) / 1000) +

@@ -1,7 +1,9 @@
 apply plugin: 'java-library'
 
+
 dependencies {
     compile fileTree(dir: 'libs', include: ['*.jar'])
+    testCompile group: 'junit', name: 'junit', version:'4.10'
     compile project(':axmlprinter')
 }
 

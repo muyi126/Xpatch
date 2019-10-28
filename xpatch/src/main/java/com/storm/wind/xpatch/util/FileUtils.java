@@ -93,9 +93,9 @@ public class FileUtils {
     // copy an asset file into a path
     public static void copyFileFromJar(String inJarPath, String distPath) {
 
-//        System.out.println("start copyFile  inJarPath =" + inJarPath + "  distPath = " + distPath);
+        System.out.println("start copyFile  inJarPath =" + inJarPath + "  distPath = " + distPath);
         InputStream inputStream = getInputStreamFromFile(inJarPath);
-
+        System.out.println("inputStream=" + inputStream);
         BufferedInputStream in = null;
         BufferedOutputStream out = null;
         try {
