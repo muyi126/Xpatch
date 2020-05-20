@@ -10,7 +10,12 @@ import java.util.HashMap;
  */
 public class SoAndDexCopyTask implements Runnable {
 
-    private static final String SO_FILE_NAME = "libsandhook.so";
+    private static final String SANDHOOK_SO_FILE_NAME = "libsandhook";
+    private static final String WHALE_SO_FILE_NAME = "libwhale";
+
+    private static final String SANDHOOK_SO_FILE_NAME_WITH_SUFFIX = "libsandhook.so";
+    private static final String WHALE_SO_FILE_NAME_WITH_SUFFIX = "libwhale.so";
+
     private static final String XPOSED_MODULE_FILE_NAME_PREFIX = "libxpatch_xp_module_";
     private static final String SO_FILE_SUFFIX = ".so";
 
@@ -20,22 +25,30 @@ public class SoAndDexCopyTask implements Runnable {
             "lib/arm64-v8a/"
     };
 
-    private final HashMap<String, String> SO_FILE_PATH_MAP = new HashMap<String, String>() {
-        {
-            put(APK_LIB_PATH_ARRAY[0], "assets/lib/armeabi-v7a/" + SO_FILE_NAME);
-            put(APK_LIB_PATH_ARRAY[1], "assets/lib/armeabi-v7a/" + SO_FILE_NAME);
-            put(APK_LIB_PATH_ARRAY[2], "assets/lib/arm64-v8a/" + SO_FILE_NAME);
-        }
-    };
-
+    private final HashMap<String, String> mSoFilePathMap = new HashMap<>();
     private int dexFileCount;
     private String unzipApkFilePath;
     private String[] xposedModuleArray;
 
-    public SoAndDexCopyTask(int dexFileCount, String unzipApkFilePath, String[] xposedModuleArray) {
+    private boolean useWhaleHookFramework;
+
+    public SoAndDexCopyTask(int dexFileCount, String unzipApkFilePath,
+                            String[] xposedModuleArray, boolean useWhaleHookFramework) {
         this.dexFileCount = dexFileCount;
         this.unzipApkFilePath = unzipApkFilePath;
         this.xposedModuleArray = xposedModuleArray;
+        this.useWhaleHookFramework = useWhaleHookFramework;
+
+        String soFileName;
+        if (useWhaleHookFramework) {
+            soFileName = WHALE_SO_FILE_NAME;
+        } else {
+            soFileName = SANDHOOK_SO_FILE_NAME;
+        }
+
+        mSoFilePathMap.put(APK_LIB_PATH_ARRAY[0], "assets/lib/armeabi-v7a/" + soFileName);
+        mSoFilePathMap.put(APK_LIB_PATH_ARRAY[1], "assets/lib/armeabi-v7a/" + soFileName);
+        mSoFilePathMap.put(APK_LIB_PATH_ARRAY[2], "assets/lib/arm64-v8a/" + soFileName);
     }
 
     @Override
@@ -49,14 +62,33 @@ public class SoAndDexCopyTask implements Runnable {
     }
 
     private void copySoFile() {
+        String[] existLibPathArray = new String[3];
+        int arrayIndex = 0;
         for (String libPath : APK_LIB_PATH_ARRAY) {
             String apkSoFullPath = fullLibPath(libPath);
-            File apkSoFullPathFile= new File(apkSoFullPath);
-            if (!apkSoFullPathFile.exists()){
-                apkSoFullPathFile.mkdirs();
+            File apkSoFullPathFile = new File(apkSoFullPath);
+            if (apkSoFullPathFile.exists()) {
+                existLibPathArray[arrayIndex] = libPath;
+                arrayIndex++;
             }
-            copyLibFile(apkSoFullPath, SO_FILE_PATH_MAP.get(libPath));
         }
+
+        // 不存在lib目录，则创建lib/armeabi-v7 文件夹
+        if (arrayIndex == 0) {
+            String libPath = APK_LIB_PATH_ARRAY[0];
+            String apkSoFullPath = fullLibPath(libPath);
+            File apkSoFullPathFile = new File(apkSoFullPath);
+            apkSoFullPathFile.mkdirs();
+            existLibPathArray[arrayIndex] = libPath;
+        }
+
+        for (String libPath : existLibPathArray) {
+            if (libPath != null && !libPath.isEmpty()) {
+                String apkSoFullPath = fullLibPath(libPath);
+                copyLibFile(apkSoFullPath, mSoFilePathMap.get(libPath));
+            }
+        }
+
         // copy xposed modules into the lib path
         if (xposedModuleArray != null && xposedModuleArray.length > 0) {
             int index = 0;
@@ -69,14 +101,13 @@ public class SoAndDexCopyTask implements Runnable {
                 if (!moduleFile.exists()) {
                     continue;
                 }
-                for (String libPath : APK_LIB_PATH_ARRAY) {
-                    String apkSoFullPath = fullLibPath(libPath);
-                    String outputModuleName= XPOSED_MODULE_FILE_NAME_PREFIX + index + SO_FILE_SUFFIX;
-                    if(new File(apkSoFullPath).exists()) {
+                for (String libPath : existLibPathArray) {
+                    if (libPath != null && !libPath.isEmpty()) {
+                        String apkSoFullPath = fullLibPath(libPath);
+                        String outputModuleName = XPOSED_MODULE_FILE_NAME_PREFIX + index + SO_FILE_SUFFIX;
                         File outputModuleSoFile = new File(apkSoFullPath, outputModuleName);
                         FileUtils.copyFile(moduleFile, outputModuleSoFile);
                     }
-
                 }
                 index++;
             }
@@ -87,7 +118,13 @@ public class SoAndDexCopyTask implements Runnable {
         //  copy dex file to root dir, rename it first
         String copiedDexFileName = "classes" + (dexFileCount + 1) + ".dex";
         // assets/classes.dex分隔符不能使用File.seperater,否则在windows上无法读取到文件，IOException
-        FileUtils.copyFileFromJar("assets/classes.dex", unzipApkFilePath + copiedDexFileName);
+        String dexAssetPath;
+        if (useWhaleHookFramework) {
+            dexAssetPath = "assets/dex/whale/classes-1.0.dex";
+        } else {
+            dexAssetPath = "assets/dex/sandhook/classes-1.0.dex";
+        }
+        FileUtils.copyFileFromJar(dexAssetPath, unzipApkFilePath + copiedDexFileName);
     }
 
     private String fullLibPath(String libPath) {
@@ -101,14 +138,18 @@ public class SoAndDexCopyTask implements Runnable {
         }
 
         // get the file name first
-        int lastIndex = srcSoPath.lastIndexOf('/');
-        int length = srcSoPath.length();
-        String soFileName = srcSoPath.substring(lastIndex, length);
+        // int lastIndex = srcSoPath.lastIndexOf('/');
+        // int length = srcSoPath.length();
+        String soFileName;
+        if (useWhaleHookFramework) {
+            soFileName = WHALE_SO_FILE_NAME_WITH_SUFFIX;
+        } else {
+            soFileName = SANDHOOK_SO_FILE_NAME_WITH_SUFFIX;
+        }
 
         // do copy
         FileUtils.copyFileFromJar(srcSoPath, new File(apkSoParentFile, soFileName).getAbsolutePath());
     }
-
 
 
     private void deleteMetaInfo() {

@@ -1,9 +1,11 @@
 package com.storm.wind.xpatch.task;
 
+import com.android.apksigner.ApkSignerTool;
 import com.storm.wind.xpatch.util.FileUtils;
 import com.storm.wind.xpatch.util.ShellCmdUtil;
 
 import java.io.File;
+import java.util.ArrayList;
 
 /**
  * Created by Wind
@@ -36,14 +38,23 @@ public class BuildAndSignApkTask implements Runnable {
 
         File keyStoreFile = new File(keyStoreFilePath);
         // assets/keystore分隔符不能使用File.separator，否则在windows上抛出IOException !!!
-        FileUtils.copyFileFromJar("assets/keystore", keyStoreFilePath);
+        String keyStoreAssetPath;
+        if (isAndroid()) {
+            // BKS-V1 类型
+            keyStoreAssetPath = "assets/android.keystore";
+        } else {
+            // BKS 类型
+            keyStoreAssetPath = "assets/keystore";
+        }
 
-        signApk(unsignedApkPath, keyStoreFilePath, signedApkPath, false);
+        FileUtils.copyFileFromJar(keyStoreAssetPath, keyStoreFilePath);
+
+        boolean signResult = signApk(unsignedApkPath, keyStoreFilePath, signedApkPath);
 
         File unsignedApkFile = new File(unsignedApkPath);
         File signedApkFile = new File(signedApkPath);
         // delete unsigned apk file
-        if (!keepUnsignedApkFile && unsignedApkFile.exists() && signedApkFile.exists()) {
+        if (!keepUnsignedApkFile && unsignedApkFile.exists() && signedApkFile.exists() && signResult) {
             unsignedApkFile.delete();
         }
 
@@ -51,25 +62,22 @@ public class BuildAndSignApkTask implements Runnable {
         if (keyStoreFile.exists()) {
             keyStoreFile.delete();
         }
-
     }
 
-    private boolean signApk(String apkPath, String keyStorePath, String signedApkPath, boolean useLocalJarsigner) {
-        File localJarsignerFile = null;
+    private boolean signApk(String apkPath, String keyStorePath, String signedApkPath) {
+        if (signApkUsingAndroidApksigner(apkPath, keyStorePath, signedApkPath, "123456")) {
+            return true;
+        }
+        if (isAndroid()) {
+            System.out.println(" Sign apk failed, please sign it yourself.");
+            return false;
+        }
         try {
             long time = System.currentTimeMillis();
             File keystoreFile = new File(keyStorePath);
             if (keystoreFile.exists()) {
                 StringBuilder signCmd;
-                if (!useLocalJarsigner) {
-                    signCmd = new StringBuilder("jarsigner ");
-                } else {
-                    String localJarsignerPath = (new File(apkPath)).getParent() + File.separator + "jarsigner-081688";
-                    localJarsignerFile = new File(localJarsignerPath);
-                    FileUtils.copyFileFromJar("assets/jarsigner", localJarsignerPath);
-                    ShellCmdUtil.execCmd("chmod -R 777 " + localJarsignerPath, null);
-                    signCmd = new StringBuilder(localJarsignerPath + " ");
-                }
+                signCmd = new StringBuilder("jarsigner ");
                 signCmd.append(" -keystore ")
                         .append(keyStorePath)
                         .append(" -storepass ")
@@ -89,19 +97,55 @@ public class BuildAndSignApkTask implements Runnable {
                     " please sign the apk by hand. \n");
             return false;
         } catch (Throwable e) {
-            if (!useLocalJarsigner) {
-                System.out.println("use default jarsigner to sign apk failed，and try again, fail msg is :" +
-                        e.toString());
-                signApk(apkPath, keyStorePath, signedApkPath, true);
-            } else {
-                System.out.println("use inner jarsigner to sign apk failed, sign it yourself fail msg is :" +
-                        e.toString());
-            }
+            System.out.println("use default jarsigner to sign apk failed, fail msg is :" +
+                    e.toString());
             return false;
-        } finally {
-            if (localJarsignerFile != null && localJarsignerFile.exists()) {
-                localJarsignerFile.delete();
-            }
         }
+    }
+
+    private boolean isAndroid() {
+        boolean isAndroid = true;
+        try {
+            Class.forName("android.content.Context");
+        } catch (ClassNotFoundException e) {
+            isAndroid = false;
+        }
+        return isAndroid;
+    }
+
+    // 使用Android build-tools里自带的apksigner工具进行签名
+    private boolean signApkUsingAndroidApksigner(String apkPath, String keyStorePath, String signedApkPath, String keyStorePassword) {
+        ArrayList<String> commandList = new ArrayList<>();
+
+        commandList.add("sign");
+        commandList.add("--ks");
+        commandList.add(keyStorePath);
+        commandList.add("--ks-key-alias");
+        commandList.add("key0");
+        commandList.add("--ks-pass");
+        commandList.add("pass:" + keyStorePassword);
+        commandList.add("--key-pass");
+        commandList.add("pass:" + keyStorePassword);
+        commandList.add("--out");
+        commandList.add(signedApkPath);
+        commandList.add("--v1-signing-enabled");
+        commandList.add("true");
+        commandList.add("--v2-signing-enabled");   // v2签名不兼容android 6
+        commandList.add("false");
+        commandList.add("--v3-signing-enabled");   // v3签名不兼容android 6
+        commandList.add("false");
+        commandList.add(apkPath);
+
+        int size = commandList.size();
+        String[] commandArray = new String[size];
+        commandArray = commandList.toArray(commandArray);
+
+        try {
+            ApkSignerTool.main(commandArray);
+        } catch (Exception e) {
+            e.printStackTrace();
+            return false;
+        }
+        return true;
     }
 }
